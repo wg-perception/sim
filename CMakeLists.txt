@@ -18,26 +18,12 @@ include(${VTK_USE_FILE})
 set( VTK_REQUIRED_LIBS vtkRendering  vtkGraphics vtkHybrid  vtkWidgets 
                      vtkImaging vtkIO vtkFiltering vtkCommon vtkVolumeRendering)
 
-add_executable(plane_render plane_render.cpp)
-target_link_libraries(plane_render ${VTK_REQUIRED_LIBS} ${OpenCV_LIBS} boost_thread)
-
-find_package(ecto)
-if(ecto_FOUND)
-
-  set_ecto_install_package_name("")
-  #set the default path for built libraries to the "ecto_opencv" directory
-  set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib)
-  ecto_python_env_gen(${CMAKE_LIBRARY_OUTPUT_DIRECTORY})
-
-  ectomodule(sim
-     module.cpp
-     plane_render.cpp
-  )
-  link_ecto(sim
-    ${VTK_REQUIRED_LIBS} ${OpenCV_LIBS}
-  )
-  set_target_properties(sim_ectomodule
-    PROPERTIES
-    COMPILE_DEFINITIONS "DO_ECTO"
+include_directories(${CMAKE_CURRENT_SOURCE_DIR}/include
+    ${BOOST_INCLUDE_DIRS}
     )
-endif()
+
+add_subdirectory(src)
+add_subdirectory(cells)
+
+add_executable(plane_render main.cpp)
+target_link_libraries(plane_render sim)

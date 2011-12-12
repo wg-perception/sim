@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 
 import ecto
-from ecto_opencv.highgui import imshow, VideoCapture
+from ecto_opencv.highgui import imshow 
 from ecto_opencv.imgproc import cvtColor, Conversion
 from ecto_opencv.calib import PatternDetector, FiducialPoseFinder, \
      PatternDrawer, PoseDrawer, CameraIntrinsics, ASYMMETRIC_CIRCLES_GRID

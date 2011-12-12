@@ -1,11 +1,8 @@
-#if DO_ECTO
-#include <ecto/ecto.hpp>
-#endif
+#include <sim/sim.hpp>
 
 #include <vtkImageData.h>
 #include <vtkPNGReader.h>
 #include <vtkPolyDataMapper.h>
-#include <vtkPolyData.h>
 #include <vtkSmartPointer.h>
 #include <vtkTextureMapToPlane.h>
 #include <vtkPlaneSource.h>
@@ -13,28 +10,24 @@
 #include <vtkRenderer.h>
 #include <vtkRenderWindow.h>
 #include <vtkRenderWindowInteractor.h>
-#include <vtkTextureMapToSphere.h>
 #include <vtkInteractorStyleTrackballCamera.h>
 #include <vtkCommand.h>
 #include <vtkCallbackCommand.h>
 #include <vtkCamera.h>
-#include <vtkRendererCollection.h>
 #include <vtkMatrix4x4.h>
-#include <vtkPerspectiveTransform.h>
-#include <vtkAppendPolyData.h>
+#include <vtkRendererCollection.h>
 
-#include <vtk3DSImporter.h>
 #include <vtkOBJReader.h>
 
-#include <boost/format.hpp>
 #include <boost/thread.hpp>
 
 #include <opencv2/core/core.hpp>
-#include <opencv2/highgui/highgui.hpp>
 #include <opencv2/imgproc/imgproc.hpp>
+
+
 #define SP(X) vtkSmartPointer< X >
 
-namespace object_recognition
+namespace sim
 {
   void
   vtk_to_K(cv::Size sz, vtkCamera* cam, cv::Mat& K, cv::Mat& R, cv::Mat& T);
@@ -47,10 +40,11 @@ namespace object_recognition
 
   void
   quit_callback(vtkObject* caller, long unsigned int eventId, void* clientData, void* callData);
-  struct SimRunner
+
+  struct SimRunner::Impl
   {
 
-    SimRunner(const std::string image_name, double width, double height, int window_width, int window_height)
+    Impl(const std::string image_name, double width, double height, int window_width, int window_height)
         :
           data_ready(false),
           has_quit(false),
@@ -92,17 +86,17 @@ namespace object_recognition
       renderWindow = vtkSmartPointer<vtkRenderWindow>::New();
       renderWindow->SetSize(window_width, window_height);
       renderWindow->AddRenderer(renderer);
-#if 0
+
       {
         vtkSmartPointer<vtkOBJReader> obj_reader = vtkSmartPointer<vtkOBJReader>::New();
-        obj_reader->SetFileName("soup.obj");
+        obj_reader->SetFileName("/home/erublee/recognition_kitchen/sim/art/box.uv.obj");
         obj_reader->Update();
 
         vtkSmartPointer<vtkPolyDataMapper> objMapper = vtkSmartPointer<vtkPolyDataMapper>::New();
         objMapper->SetInput(obj_reader->GetOutput());
-        objMapper->SetScalarMaterialModeToAmbient();
+        //objMapper->SetScalarMaterialModeToAmbient();
         vtkSmartPointer<vtkPNGReader> pngReader = vtkSmartPointer<vtkPNGReader>::New();
-        pngReader->SetFileName("soup.png");
+        pngReader->SetFileName("/home/erublee/recognition_kitchen/sim/art/box.png");
         vtkSmartPointer<vtkTexture> texture = vtkSmartPointer<vtkTexture>::New();
         texture->SetInput(pngReader->GetOutput());
 
@@ -111,7 +105,7 @@ namespace object_recognition
         objActor->SetTexture(texture);
         renderer->AddActor(objActor);
       }
-#endif
+
       renderWindowInteractor = vtkSmartPointer<vtkRenderWindowInteractor>::New();
       renderWindowInteractor->SetRenderWindow(renderWindow);
 
@@ -201,7 +195,7 @@ namespace object_recognition
   quit_callback(vtkObject* caller, long unsigned int eventId, void* clientData, void* callData)
   {
     vtkRenderWindowInteractor *iren = static_cast<vtkRenderWindowInteractor*>(caller);
-    if (static_cast<SimRunner*>(clientData)->quit)
+    if (static_cast<SimRunner::Impl*>(clientData)->quit)
     {
       iren->InvokeEvent(vtkCommand::ExitEvent);
     }
@@ -213,7 +207,7 @@ namespace object_recognition
     vtkRenderWindowInteractor *iren = static_cast<vtkRenderWindowInteractor*>(caller);
     cv::Mat image, depth, mask, R, T, K;
     grab_frame(iren->GetRenderWindow(), image, depth, mask, K, R, T);
-    static_cast<SimRunner*>(clientData)->put_data(image, depth, mask, K, R, T);
+    static_cast<SimRunner::Impl*>(clientData)->put_data(image, depth, mask, K, R, T);
   }
 
   void
@@ -228,6 +222,7 @@ namespace object_recognition
   {
     return w / tan(alpha);
   }
+
   void
   vtk_to_K(cv::Size sz, vtkCamera* cam, cv::Mat& K, cv::Mat& R, cv::Mat& T)
   {
@@ -281,8 +276,8 @@ namespace object_recognition
   }
 
   void
-  grab_frame(vtkRenderWindow* renderWindow, cv::Mat& image, cv::Mat& depth, cv::Mat& mask,
-            cv::Mat& K, cv::Mat& R, cv::Mat& T)
+  grab_frame(vtkRenderWindow* renderWindow, cv::Mat& image, cv::Mat& depth, cv::Mat& mask, cv::Mat& K, cv::Mat& R,
+             cv::Mat& T)
   {
     int * ws = renderWindow->GetSize();
     cv::Size sz(ws[0], ws[1]);
@@ -308,122 +303,30 @@ namespace object_recognition
     cv::flip(image, image, 0); //vertical flip.
     cv::flip(depth, depth, 0); //vertical flip.
   }
-}
-#if DO_ECTO
-namespace object_recognition
-{
-  using ecto::tendrils;
-  struct PlanarSim
+
+  SimRunner::SimRunner(const std::string image_name, double width, double height, int window_width, int window_height)
+      :
+        impl_(new  Impl(image_name, width, height, window_width, window_height))
   {
-    static
-    void
-    declare_params(tendrils& p)
-    {
-      p.declare<std::string>("image_name", "Image file name, should be a 3 channel png.").required(true);
-      p.declare<double>("width", "width in meters.").required(true);
-      p.declare<double>("height", "height in meters.").required(true);
-      p.declare<int>("window_width", "Window width in pixels", 640);
-      p.declare<int>("window_height", "Window height in pixels", 480);
-    }
-
-    static
-    void
-    declare_io(const tendrils& p, tendrils& i, tendrils& o)
-    {
-      o.declare<cv::Mat>("image", "Image generated");
-      o.declare<cv::Mat>("depth", "Depth generated");
-      o.declare<cv::Mat>("mask", "Valid depth points");
-
-      o.declare<cv::Mat>("R", "Rotation matrix, double, 3x3");
-      o.declare<cv::Mat>("T", "Translation matrix, double, 3x1");
-      o.declare<cv::Mat>("K", "Camera Intrisics matrix, double, 3x3");
-    }
-
-    void
-    configure(const tendrils& p, const tendrils& i, const tendrils& o)
-    {
-      double width, height;
-      int window_width, window_height;
-      std::string image_name;
-      p["image_name"] >> image_name;
-      p["window_width"] >> window_width;
-      p["window_height"] >> window_height;
-      p["width"] >> width;
-      p["height"] >> height;
-      sm.reset(new SimRunner(image_name, width, height, window_width, window_height));
-      t.reset(new boost::thread(boost::ref(*sm)));
-      image = o["image"];
-      depth = o["depth"];
-      mask = o["mask"];
-      R = o["R"];
-      K = o["K"];
-      T = o["T"];
-    }
-
-    int
-    process(const tendrils& i, const tendrils& o)
-    {
-      bool new_data;
-      if (sm->get_data(*image, *depth, *mask, *K, *R, *T, new_data))
-      {
-        t->join();
-        return ecto::QUIT;
-      }
-      return ecto::OK;
-    }
-    ~PlanarSim()
-    {
-      if (sm)
-      {
-        sm->quit = true;
-      }
-      if (t)
-      {
-        t->interrupt();
-        t->join();
-      }
-    }
-    boost::shared_ptr<SimRunner> sm;
-    boost::shared_ptr<boost::thread> t;
-    ecto::spore<cv::Mat> image, depth, mask, R, T, K;
-  };
-}
-
-ECTO_CELL(sim, object_recognition::PlanarSim, "PlanarSim", "Simulates a view of a planar object.");
-#else
-int
-main(int argc, char *argv[])
-{
-  using namespace object_recognition;
-  // Parse command line arguments
-  if (argc != 2)
-  {
-    std::cerr << "Usage: " << argv[0] << " Filename.png" << std::endl;
-    return EXIT_FAILURE;
   }
 
-  std::string inputFilename = argv[1];
-
-  boost::shared_ptr<SimRunner> sm(new SimRunner(inputFilename, 0.8, 0.4, 640, 480));
-  boost::thread t(boost::ref(*sm));
-  cv::Mat image, depth, mask, R, T, K;
-  bool new_data;
-  while (!sm->get_data(image, depth, mask, K, R, T, new_data))
+  void
+  SimRunner::operator ()()
   {
-    if (new_data)
-    {
-      cv::imshow("Render", image);
-      std::cout << "K = " << K << "\nR = " << R << "\nT = " << T << std::endl;
-    }
-    int key = 0xFF & cv::waitKey(10);
-    if (key == 'q')
-    {
-      sm->quit = true;
-    }
-    boost::this_thread::sleep(boost::posix_time::milliseconds(10));
+    (*impl_)();
   }
-  t.join();
-  std::cout << "exiting" << std::endl;
-  return EXIT_SUCCESS;
+
+  bool
+  SimRunner::get_data(cv::Mat & image, cv::Mat & depth, cv::Mat & mask, cv::Mat & K, cv::Mat & R, cv::Mat & T,
+                      bool & new_data)
+  {
+    return impl_->get_data(image, depth, mask, K, R, T, new_data);
+  }
+
+  void SimRunner::quit()
+  {
+    impl_->quit = true;
 }
-#endif
+
+
+}
